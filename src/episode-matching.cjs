@@ -42,6 +42,9 @@ function pageKind(context,name){
  // With no explicit season/part identity, a shared family name is only a combined-page candidate.
  return 'family';
 }
+// Labels such as "TV Special" or "OVA" name the kind of release, not the chapter, so they do not
+// conflict with a canonical title (dandanplay lists the Dr.STONE 龍水 special as "第1话 TV Special").
+const PLACEHOLDER=/^(?:tv\s*)?(?:special|sp|ova|oad|movie|the\s*movie|剧场版|劇場版|特别篇|特別篇|特别放送|特別放送|特番|総集編|总集篇|本篇|正片)$/i;
 function rowNumber(e){return finite(e.number===undefined?e.sort:e.number);}
 function isMainRow(e){return !(/^(?:sp|ova|oad|op|ed|special)$/i.test(e.type||'')||/^(?:【[^】]*】\s*)?(?:[SOC]\d+\s|(?:OP|ED)\s*\d*\b|特别篇$|特別篇$)/i.test(e.displayName||e.name||''));}
 function matchPage(context,page){
@@ -57,6 +60,10 @@ function matchPage(context,page){
  // Repeated named chapters can indicate duplicate or displaced source entries. Never infer an offset through them.
  // On a page the user confirmed, a repeat is a second copy of that chapter (e.g. a re-upload): the first is used.
  for(const ep of own){if(!page.danmaku&&!page.confirmed&&rowsFor(ep).length>1)return empty('duplicateEpisodeTitle');}
+ // Every chapter of this subject found by a title no other season uses. Such a page is accepted even
+ // when its numbering cannot be explained (a one-episode special listed on an 11-episode page).
+ const anchored=reason=>{const matches=[];for(const ep of own){const rows=rowsFor(ep);if(rows.length!==1||!canonTitles(ep).some(t=>titleOwners.get(t).size===1))return empty(reason);matches.push({episode:ep,row:rows[0],method:'title',confidence:'title'});}
+  return new Set(matches.map(m=>String(m.row.id))).size===matches.length?{kind,mode:'title',matches,available:matches.length,reason:'matched'}:empty(reason);};
  const ownAnchorCount=own.filter(e=>rowsFor(e).length&&canonTitles(e).some(t=>titleOwners.has(t)&&titleOwners.get(t).size===1)).length;
  if(page.danmaku&&ownAnchorCount>=Math.min(2,own.length))kind='own';
  let mode;
@@ -65,15 +72,15 @@ function matchPage(context,page){
  for(const sub of series){const eps=mainEpisodes(sub).filter(e=>Number(e.sort)>0);if(!eps.length)continue;if(sequence.length&&Number(eps[0].sort)!==Number(sequence[sequence.length-1].sort)+1)break;sequence.push(...eps);}
  const max=numbers.length?Math.max.apply(null,numbers):0,prefix=sequence.filter(e=>Number(e.sort)<=max),seriesRange=prefix.length===unique.size&&new Set(prefix.map(e=>Number(e.sort))).size===prefix.length&&prefix.every(e=>unique.has(Number(e.sort)))&&own.some(e=>prefix.some(x=>String(x.id)===String(e.id)));
  if(kind==='series'||(exact&&unique.size>own.length+2&&parts.length===1)){
-  if(!seriesRange)return empty('unprovenSeriesMerge');mode='sort';
+  if(!seriesRange)return anchored('unprovenSeriesMerge');mode='sort';
  }else if(first!==null&&first>1){
   const local=own.map(e=>Number(e.sort)-seasonFirst+1),global=own.map(e=>Number(e.sort));
-  if(local.some(n=>unique.has(n)))mode='season';else if(global.some(n=>unique.has(n)))mode='sort';else return empty('episodeRangeMismatch');
+  if(local.some(n=>unique.has(n)))mode='season';else if(global.some(n=>unique.has(n)))mode='sort';else return anchored('episodeRangeMismatch');
  }else if(exact&&unique.size<=own.length+2){mode=first===0?'sort':'ep';}
  else{
   const prior=parts.filter(s=>String(s.id||s.bgmId)!==String(context.subject.id||context.subject.bgmId)&&Number(mainEpisodes(s)[0]&&mainEpisodes(s)[0].sort)<Number(own[0].sort));
   const priorCount=prior.reduce((n,s)=>n+mainEpisodes(s).filter(e=>Number(e.sort)>0).length+(s.inlineSpecialCount||0),0);
-  if(parts.length<2||unique.size<=priorCount)return empty('unprovenCombinedPage');
+  if(parts.length<2||unique.size<=priorCount)return anchored('unprovenCombinedPage');
   mode='season';
  }
  function expected(ep){return mode==='sort'?Number(ep.sort):mode==='season'?Number(ep.sort)-seasonFirst+1:ep.ep==null?null:Number(ep.ep);}
@@ -86,7 +93,7 @@ function matchPage(context,page){
   if(method!=='title'&&knownOther)continue;
   // A meaningful but conflicting title is not a numbered placeholder. A numeric match cannot override it.
   const rawName=row.episodeName===undefined?row.name:row.episodeName;
-  if(method!=='title'&&got.length>=3&&canonTitles(ep).length&&!(row.genericTitle||/^(?:第\s*)?[\d.]+\s*[话話集]?$/.test(String(rawName||'').trim())))continue;
+  if(method!=='title'&&got.length>=3&&canonTitles(ep).length&&!(row.genericTitle||/^(?:第\s*)?[\d.]+\s*[话話集]?$/.test(String(rawName||'').trim())||PLACEHOLDER.test(String(rawName||'').trim())))continue;
   matches.push({episode:ep,row,method,confidence:method==='title'?'title':'structure'});
  }
  // One source resource must not serve two canonical chapters.

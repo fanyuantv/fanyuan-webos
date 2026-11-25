@@ -626,6 +626,10 @@ input::placeholder {
   margin-top: 22px;
 }
 
+#root .grid-section > .episode-grid {
+  margin-top: 16px;
+}
+
 #root .poster-grid.cols-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }

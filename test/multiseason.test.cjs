@@ -143,3 +143,19 @@ test('episode title accent folding supports Latin combining marks and preserves 
  for(const [a,b] of [['Die Rückkehr des Adlers','Die Ruckkehr des Adlers'],['Die Ru\u0308ckkehr des Adlers','Die Ruckkehr des Adlers'],['Café résumé','Cafe resume']])assert.equal(episodeTitle(a),episodeTitle(b));
  assert.notEqual(episodeTitle('かみの物語'),episodeTitle('がみの物語'));assert.equal(episodeTitle('がみの物語'),episodeTitle('か\u3099みの物語'));
 });
+test('a release-kind label like "TV Special" is not a conflicting chapter title',()=>{
+ const subject={id:331479,name:'Dr.STONE 龍水',name_cn:'石纪元 龙水',date:'2022-07-10',episodes:[{id:1111367,type:0,sort:1,ep:1,name:'Dr.STONE 龍水',name_cn:''},{id:1117732,type:1,sort:0,ep:0,name:'生配信特番',name_cn:''}]};
+ const page={name:'石纪元 龙水',danmaku:true,confirmed:true,episodes:[{id:'10432',number:1,episodeName:'TV Special',name:'TV Special',displayName:'【dandan】 第1话 TV Special'},{id:'10433',number:null,episodeName:'Ending',name:'Ending',displayName:'【dandan】 S1 Ending'}]};
+ const r=matchPage({subject,series:[subject]},page);
+ assert.deepEqual(r.matches.map(m=>[m.episode.id,m.row.id]),[[1111367,'10432']]);
+ page.episodes[0]=Object.assign({},page.episodes[0],{episodeName:'石油の夜明け',name:'石油の夜明け'});
+ assert.equal(matchPage({subject,series:[subject]},page).available,0);
+});
+test('a chapter found by its own title is used even when the page numbering does not fit the subject',()=>{
+ const subject={id:331479,name:'Dr.STONE 龍水',name_cn:'石纪元 龙水',date:'2022-07-10',episodes:[{id:1111367,type:0,sort:1,ep:1,name:'Dr.STONE 龍水',name_cn:''}]};
+ const episodes=[{id:'5288',sort:'1',name:'1 Dr.STONE 龍水'}].concat(Array.from({length:10},(_,i)=>({id:String(5289+i),sort:String(i+2),name:(i+2)+' 第'+String(i+2).padStart(2,'0')+'集'})));
+ const r=matchPage({subject,series:[subject]},{name:'石纪元 龙水',episodes});
+ assert.deepEqual([r.reason,r.matches.map(m=>[m.episode.id,m.row.id])],['matched',[[1111367,'5288']]]);
+ episodes[0]=Object.assign({},episodes[0],{name:'1 第01集'});
+ assert.equal(matchPage({subject,series:[subject]},{name:'石纪元 龙水',episodes}).reason,'unprovenSeriesMerge');
+});
